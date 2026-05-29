@@ -7,7 +7,7 @@
 -- WHY:
 --   In production pipelines, silent data loss is the most dangerous failure
 --   mode. These checks ensure every row is accounted for — either it made it
---   through, or we can explain exactly why it was filtered out.
+--   through or was explicitly filtered out.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

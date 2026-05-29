@@ -1,29 +1,15 @@
 -- =============================================================================
--- GOLD LAYER: Generate Predictions & Build Final Analytics Table
+-- GOLD LAYER: Predictions and Analytics Table
 -- =============================================================================
--- File:    04_gold_prediction.sql
--- Layer:   Gold (Analytics)
--- Purpose: Apply the trained K-means model to Silver layer data and create
---          the final business-ready analytics table with segment assignments.
+-- Purpose: apply the trained K-means model to Silver transactions and persist
+-- the final analytics table with customer segment assignments.
 --
--- OUTPUT: retail_gold.analytics_customer_segments
---   Every clean transaction enriched with its predicted customer segment.
---   Business users can query this directly for segmentation analysis,
---   targeted marketing, and reporting.
---
--- DESIGN DECISIONS:
---   1. We use TABLE keyword in ML.PREDICT — this passes ALL columns from the
---      Silver table through the prediction, and BigQuery automatically selects
---      the correct feature columns (amount, item_category) for the model.
---      No manual JOIN is needed; all original columns are preserved.
---   2. CENTROID_ID → customer_segment for business readability.
---   3. _predicted_at timestamp for audit trail.
---   4. Table is partitioned and clustered for downstream query performance.
+-- Design notes:
+-- - ML.PREDICT returns the original input columns plus model outputs.
+-- - CENTROID_ID is renamed to customer_segment for readability.
+-- - _predicted_at records when the segmentation output was generated.
 -- =============================================================================
 
--- -----------------------------------------------------------------------------
--- Generate predictions and create the final Gold table
--- -----------------------------------------------------------------------------
 CREATE OR REPLACE TABLE retail_gold.analytics_customer_segments
 PARTITION BY purchase_date
 CLUSTER BY customer_segment, item_category
@@ -41,24 +27,15 @@ SELECT
   item_category,
   is_returned,
   days_to_first_purchase,
-  -- ML.PREDICT outputs CENTROID_ID (integer 1..k) as the cluster assignment.
-  -- We rename it to something business-friendly.
-  CENTROID_ID                   AS customer_segment,
+  CENTROID_ID AS customer_segment,
   _processed_at,
-  CURRENT_TIMESTAMP()           AS _predicted_at
+  CURRENT_TIMESTAMP() AS _predicted_at
 FROM ML.PREDICT(
   MODEL retail_gold.customer_segmentation_model,
-  -- The TABLE keyword passes ALL columns through; BigQuery uses only the
-  -- model's feature columns (amount, item_category) for prediction and
-  -- carries everything else through to the output unchanged.
   TABLE retail_silver.cleaned_transactions
 );
 
--- =============================================================================
--- QUICK VERIFICATION
--- =============================================================================
--- Run after creating the table to verify cluster distribution.
-
+-- Expected verification:
 -- SELECT
 --   customer_segment,
 --   COUNT(*)                              AS num_transactions,
