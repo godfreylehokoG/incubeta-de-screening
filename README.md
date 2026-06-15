@@ -1,10 +1,10 @@
 # Retail Data Pipeline on BigQuery
 
-This repository contains a BigQuery-based data pipeline for the Incubeta Data Engineering Screening Challenge. It implements a Bronze, Silver, and Gold medallion flow and uses BigQuery ML K-Means clustering to assign customer segments.
+This repository contains a BigQuery-based data pipeline for the Incubeta Data Engineering Screening Challenge. It implements a Bronze, Silver, and Gold medallion flow and uses BigQuery ML K-Means clustering to assign customer-level segments.
 
 ## Pipeline Summary
 
-The source file is loaded into BigQuery as raw strings, transformed into a typed and validated Silver table, then used to train and apply a BQML clustering model.
+The source file is loaded into BigQuery as raw strings, transformed into a typed and validated Silver transaction table, aggregated into customer-level features, and then segmented with BigQuery ML.
 
 ```mermaid
 graph LR
@@ -12,14 +12,18 @@ graph LR
 
     subgraph BigQuery
         Bronze["retail_bronze.raw_transactions<br/>10,000 raw rows"]
-        Silver["retail_silver.cleaned_transactions<br/>9,593 clean rows"]
-        Model["retail_gold.customer_segmentation_model<br/>K-Means, k=4"]
-        Gold["retail_gold.analytics_customer_segments<br/>9,593 segmented rows"]
+        Silver["retail_silver.cleaned_transactions<br/>9,593 clean transaction rows"]
+        Features["retail_gold.customer_features<br/>4,789 customer rows"]
+        Model["retail_gold.customer_segmentation_model<br/>K-Means, k=5"]
+        Segments["retail_gold.customer_segments<br/>4,789 customer segments"]
+        Gold["retail_gold.analytics_customer_segments<br/>9,593 transaction rows enriched with customer segment"]
 
         Bronze --> Silver
-        Silver --> Model
+        Silver --> Features
+        Features --> Model
+        Model --> Segments
         Silver --> Gold
-        Model --> Gold
+        Segments --> Gold
     end
 ```
 
@@ -64,7 +68,7 @@ Then run:
 
 ### Bronze
 
-`retail_bronze.raw_transactions` stores the CSV as received. All columns are loaded as `STRING` so the raw source values are preserved for profiling and downstream cleansing.
+`retail_bronze.raw_transactions` stores the CSV as received. All columns are loaded as `STRING` so raw source values are preserved for profiling and downstream cleansing.
 
 Expected row count:
 
@@ -94,20 +98,49 @@ The table is partitioned by `purchase_date` and clustered by `item_category`.
 
 ### Gold
 
-`retail_gold.customer_segmentation_model` is a BigQuery ML K-Means model trained on:
+The Gold layer now separates customer-level modelling from transaction-level analytics:
 
-- `amount`
-- `item_category`
+- `retail_gold.customer_features`: one row per customer with RFM-style and category-preference features
+- `retail_gold.customer_segmentation_model`: K-Means model trained on customer-level features
+- `retail_gold.customer_segments`: one row per customer with the predicted segment
+- `retail_gold.analytics_customer_segments`: original clean transaction rows enriched with the customer-level segment
 
-`retail_gold.analytics_customer_segments` applies the model with `ML.PREDICT` and stores the original clean transaction fields plus `customer_segment`.
-
-The final Gold table is partitioned by `purchase_date` and clustered by `customer_segment, item_category`.
-
-Expected row count:
+Expected counts:
 
 ```text
-9,593 rows
+customer_features: 4,789 rows
+customer_segments: 4,789 rows
+analytics_customer_segments: 9,593 rows
 ```
+
+## Customer Segmentation Features
+
+The model is trained at customer grain using:
+
+- `transaction_count`
+- `total_spend`
+- `avg_transaction_value`
+- `max_transaction_value`
+- `recency_days`
+- `purchase_span_days`
+- `return_rate`
+- `avg_days_to_purchase`
+- `category_diversity`
+- category spend shares for Beauty, Sports, Home, Apparel, Electronics, and Automotive
+
+Category spend shares are used instead of raw category spend so the model captures preference mix separately from total spend.
+
+## Model Design
+
+The model uses BigQuery ML K-Means with:
+
+- `num_clusters = 5`
+- `standardize_features = TRUE`
+- `kmeans_init_method = 'KMEANS++'`
+- `distance_type = 'euclidean'`
+- `max_iterations = 50`
+
+The original assessment model clustered transaction rows. This version corrects the modelling grain by clustering customers, then joining the segment back to the transaction-level Gold table. That keeps the final deliverable aligned with the assessment while making the ML design more statistically appropriate for customer segmentation.
 
 ## Data Quality Findings
 
@@ -119,36 +152,18 @@ Expected row count:
 | `purchase_date` | Valid date strings in source data | Cast with `SAFE_CAST` |
 | `transaction_id` | No duplicates found | Validate in quality checks |
 
-## Model Evaluation
-
-The trained model was evaluated with `ML.EVALUATE`.
-
-| Metric | Value |
-| --- | ---: |
-| `davies_bouldin_index` | 2.1797404818696244 |
-| `mean_squared_distance` | 0.90840111109909 |
-
-The resulting customer segments are mainly separated by spend level:
-
-| Segment | Rows | Average amount |
-| --- | ---: | ---: |
-| 1 | 2,238 | 593.76 |
-| 2 | 2,357 | 1047.95 |
-| 3 | 3,347 | 220.55 |
-| 4 | 1,651 | 774.34 |
-
 ## Validation
 
 The validation scripts check:
 
 - Bronze, Silver, and Gold row reconciliation
-- Non-null key fields
-- Positive transaction amounts
-- Valid item categories
-- No duplicate transaction IDs
+- Silver transaction-level data quality
+- One customer-feature row per Silver customer
+- One customer-segment row per Silver customer
 - Non-null customer segment assignments in Gold
+- Non-negative customer feature metrics
 
-Expected validation result: all data quality checks pass with zero violations.
+Expected validation result: all checks pass with zero violations.
 
 ## BigQuery Retention Note
 
@@ -180,7 +195,7 @@ In production, the pipeline would run on a scheduled cadence or be triggered by 
 
 ## Proof of Execution
 
-The `proof/` directory contains:
+The `proof/` directory contains screenshots from the original submitted run. After running the customer-level segmentation upgrade, refresh these files:
 
 - `gold_table_schema.png`: final Gold table schema
 - `gold_table_preview.png`: final Gold table preview rows

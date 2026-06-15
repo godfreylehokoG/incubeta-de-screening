@@ -31,27 +31,6 @@ OPTIONS (
   labels = [('layer', 'bronze'), ('source', 'csv')]
 );
 
--- CSV load options.
--- Recommended production path: upload the CSV to GCS, then run:
---
--- LOAD DATA OVERWRITE retail_bronze.raw_transactions
--- FROM FILES (
---   format = 'CSV',
---   uris = ['gs://YOUR_BUCKET/raw_transactions_10000.csv'],
---   skip_leading_rows = 1
--- );
---
--- Console alternative:
--- Create table from upload, set table name to raw_transactions, paste the schema
--- above, and skip one header row.
---
--- CLI alternative:
--- bq load \
---   --source_format=CSV \
---   --skip_leading_rows=1 \
---   retail_bronze.raw_transactions \
---   ./data/raw_transactions_10000.csv \
---   transaction_id:STRING,customer_id:STRING,signup_date:STRING,purchase_date:STRING,amount:STRING,item_category:STRING,is_returned:STRING
 
 -- Basic ingestion sanity check.
 SELECT
@@ -68,3 +47,5 @@ FROM retail_bronze.raw_transactions;
 -- null_signup_dates: 823
 -- null_is_returned: 1009
 -- non_positive_amounts: 407
+
+
