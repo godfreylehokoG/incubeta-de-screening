@@ -8,9 +8,9 @@
 -- - item_category: product preference, one-hot encoded automatically by BQML.
 --
 -- Model settings:
--- - num_clusters = 4 as a simple baseline for retail segmentation.
+-- - num_clusters = 5 as a simple baseline for retail segmentation.
 -- - standardize_features = TRUE so amount does not dominate distance scoring.
--- - max_iterations = 20, sufficient for this 10k-row assessment dataset.
+-- - max_iterations = 50, sufficient for this 10k-row assessment dataset.
 -- =============================================================================
 
 -- Gold dataset.
@@ -24,16 +24,14 @@ OPTIONS (
 CREATE OR REPLACE MODEL retail_gold.customer_segmentation_model
 OPTIONS (
   model_type = 'kmeans',
-  num_clusters = 4,
+  num_clusters = 5,
   standardize_features = TRUE,
-  max_iterations = 20,
+  kmeans_init_method = 'KMEANS++',
+  max_iterations = 50,
   distance_type = 'euclidean'
 ) AS
 SELECT
-  amount,
+  SAFE_CAST(amount AS FLOAT64) AS amount,
   item_category
 FROM retail_silver.cleaned_transactions;
 
--- Optional elbow-method exploration:
--- Train additional models with num_clusters from 2 to 8 and compare
--- ML.EVALUATE results, especially davies_bouldin_index.
