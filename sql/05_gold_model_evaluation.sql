@@ -1,30 +1,13 @@
 -- =============================================================================
--- GOLD LAYER: Model Evaluation and Cluster Interpretation
--- =============================================================================
--- Purpose:
--- Evaluate the trained K-means model and interpret the resulting customer
--- segments using statistical metrics and business-level summaries.
+-- GOLD LAYER: Model Evaluation & Cluster Interpretation
 -- =============================================================================
 
-
--- =============================================================================
--- Query 1: Clustering Quality Metrics
--- =============================================================================
--- Interpretation:
--- Lower Davies-Bouldin Index and Mean Squared Distance indicate better
--- separated and more compact clusters.
-
+-- 1. Clustering quality metrics
 SELECT *
 FROM ML.EVALUATE(MODEL retail_gold.customer_segmentation_model);
 
 
--- =============================================================================
--- Query 2: Centroid Interpretation
--- =============================================================================
--- Each centroid represents the average feature profile of a cluster.
--- Numerical values indicate feature intensity, while categorical values
--- reflect one-hot encoded category influence.
-
+-- 2. Centroid interpretation (what defines each cluster)
 SELECT
   centroid_id,
   feature,
@@ -34,13 +17,7 @@ FROM ML.CENTROIDS(MODEL retail_gold.customer_segmentation_model)
 ORDER BY centroid_id, feature;
 
 
--- =============================================================================
--- Query 3: Business Segment Summary
--- =============================================================================
--- Purpose:
--- Summarise each customer segment in business terms including spend,
--- activity, retention behaviour, and category preference.
-
+-- 3. Business-level cluster summary
 WITH segment_summary AS (
   SELECT
     customer_segment,
@@ -54,7 +31,6 @@ WITH segment_summary AS (
 
     ROUND(AVG(days_to_first_purchase), 1) AS avg_days_to_purchase,
     ROUND(COUNTIF(is_returned) * 100.0 / COUNT(*), 1) AS return_rate_pct
-
   FROM retail_gold.analytics_customer_segments
   GROUP BY customer_segment
 ),
@@ -88,16 +64,10 @@ SELECT
   s.min_spend,
   s.max_spend,
   s.stddev_spend,
-
   d.dominant_category,
   d.category_transactions AS dominant_category_transactions,
-
   s.avg_days_to_purchase,
-  s.return_rate_pct,
-
-  SAFE_DIVIDE(s.total_transactions, s.unique_customers)
-    AS avg_transactions_per_customer
-
+  s.return_rate_pct
 FROM segment_summary s
 LEFT JOIN dominant_categories d
   USING (customer_segment)

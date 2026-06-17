@@ -34,4 +34,3 @@ SELECT
   SAFE_CAST(amount AS FLOAT64) AS amount,
   item_category
 FROM retail_silver.cleaned_transactions;
-
